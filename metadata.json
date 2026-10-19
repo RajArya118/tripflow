@@ -1,0 +1,6 @@
+{
+  "name": "AuraVoyage Travel & Stays",
+  "description": "Curated luxury stays, boutique expeditions, interactive itinerary architect, and seamless travel booking.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
