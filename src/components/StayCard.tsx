@@ -1,13 +1,15 @@
 import React, { useState } from 'react';
 import { StayListing, Currency } from '../types/travel';
 import { CURRENCY_RATES } from '../data/mockData';
-import { Star, Heart, MapPin, Sparkles } from 'lucide-react';
+import { Star, Heart, MapPin, ChevronLeft, ChevronRight, SlidersHorizontal } from 'lucide-react';
 
 interface StayCardProps {
   stay: StayListing;
   currency: Currency;
   isSaved: boolean;
+  isCompared?: boolean;
   onToggleSave: (stay: StayListing) => void;
+  onToggleCompare?: (stay: StayListing) => void;
   onSelect: (stay: StayListing) => void;
 }
 
@@ -15,20 +17,38 @@ export const StayCard: React.FC<StayCardProps> = ({
   stay,
   currency,
   isSaved,
+  isCompared = false,
   onToggleSave,
+  onToggleCompare,
   onSelect,
 }) => {
   const [imageFailed, setImageFailed] = useState(false);
+  const [activeImageIndex, setActiveImageIndex] = useState(0);
+
   const currencyInfo = CURRENCY_RATES[currency] || CURRENCY_RATES.USD;
   const convertedPrice = Math.round(stay.pricePerNight * currencyInfo.rate);
 
+  const handleNextImage = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    if (stay.images && stay.images.length > 1) {
+      setActiveImageIndex((prev) => (prev + 1) % stay.images.length);
+    }
+  };
+
+  const handlePrevImage = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    if (stay.images && stay.images.length > 1) {
+      setActiveImageIndex((prev) => (prev - 1 + stay.images.length) % stay.images.length);
+    }
+  };
+
   return (
-    <div className="group relative flex flex-col bg-white border border-stone-200/90 rounded-xl overflow-hidden shadow-2xs hover:shadow-md transition-all duration-200">
-      {/* Visual Image Container with Zero-Broken-Image Fallback */}
+    <div className="group relative flex flex-col bg-white border border-stone-200/90 rounded-2xl overflow-hidden shadow-2xs hover:shadow-xl transition-all duration-300">
+      {/* Visual Image Container with Interactive Image Switcher */}
       <div className="relative aspect-4/3 w-full bg-stone-100 overflow-hidden">
-        {!imageFailed && stay.images[0] ? (
+        {!imageFailed && stay.images[activeImageIndex] ? (
           <img
-            src={stay.images[0]}
+            src={stay.images[activeImageIndex]}
             alt={stay.title}
             referrerPolicy="no-referrer"
             onError={() => setImageFailed(true)}
@@ -40,6 +60,38 @@ export const StayCard: React.FC<StayCardProps> = ({
             <span className="font-serif text-lg font-semibold tracking-tight">{stay.destination}</span>
             <span className="text-xs text-stone-300 font-light mt-1">{stay.country}</span>
           </div>
+        )}
+
+        {/* Image pagination dots */}
+        {stay.images && stay.images.length > 1 && (
+          <>
+            <button
+              onClick={handlePrevImage}
+              aria-label="Previous image"
+              className="absolute left-2.5 top-1/2 -translate-y-1/2 p-1.5 rounded-full bg-black/40 hover:bg-black/70 text-white opacity-0 group-hover:opacity-100 transition-opacity cursor-pointer backdrop-blur-xs"
+            >
+              <ChevronLeft className="w-4 h-4" />
+            </button>
+
+            <button
+              onClick={handleNextImage}
+              aria-label="Next image"
+              className="absolute right-2.5 top-1/2 -translate-y-1/2 p-1.5 rounded-full bg-black/40 hover:bg-black/70 text-white opacity-0 group-hover:opacity-100 transition-opacity cursor-pointer backdrop-blur-xs"
+            >
+              <ChevronRight className="w-4 h-4" />
+            </button>
+
+            <div className="absolute bottom-3 right-3 flex items-center gap-1 bg-black/40 backdrop-blur-md px-2 py-1 rounded-full">
+              {stay.images.map((_, idx) => (
+                <span
+                  key={idx}
+                  className={`w-1.5 h-1.5 rounded-full transition-all ${
+                    idx === activeImageIndex ? 'bg-white w-3' : 'bg-white/50'
+                  }`}
+                />
+              ))}
+            </div>
+          </>
         )}
 
         {/* Favorite Heart Button */}
@@ -57,6 +109,25 @@ export const StayCard: React.FC<StayCardProps> = ({
             }`}
           />
         </button>
+
+        {/* Compare Property Button */}
+        {onToggleCompare && (
+          <button
+            onClick={(e) => {
+              e.stopPropagation();
+              onToggleCompare(stay);
+            }}
+            title={isCompared ? 'Remove from comparison' : 'Compare property'}
+            className={`absolute top-3 left-3 p-1.5 px-2 rounded-md text-[10px] font-semibold tracking-wide backdrop-blur-md transition-colors cursor-pointer flex items-center gap-1 ${
+              isCompared
+                ? 'bg-amber-400 text-stone-950 font-bold shadow-xs'
+                : 'bg-black/40 hover:bg-black/60 text-white'
+            }`}
+          >
+            <SlidersHorizontal className="w-3 h-3" />
+            <span>{isCompared ? 'Comparing' : 'Compare'}</span>
+          </button>
+        )}
 
         {/* Quiet Kicker Tag if featured/badge */}
         {stay.badge && (
@@ -92,7 +163,7 @@ export const StayCard: React.FC<StayCardProps> = ({
         </h3>
 
         {/* Unboxed Features Line */}
-        <div className="flex items-center gap-2 text-xs text-stone-500 mb-3">
+        <div className="flex items-center gap-2 text-xs text-stone-500 mb-2.5">
           <span>{stay.bedrooms} {stay.bedrooms === 1 ? 'Bedroom' : 'Bedrooms'}</span>
           <span aria-hidden="true">·</span>
           <span>{stay.bathrooms} {stay.bathrooms === 1 ? 'Bath' : 'Baths'}</span>

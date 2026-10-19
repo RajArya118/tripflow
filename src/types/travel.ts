@@ -118,12 +118,28 @@ export interface TripPlan {
   packingAdvice: string[];
 }
 
+export interface DestinationInfo {
+  name: string;
+  country: string;
+  region: string;
+  airport: string;
+  tag: string;
+  tagCategory: CategoryTheme;
+  climate: string;
+  bestSeason: string;
+  currencyCode: Currency;
+  language: string;
+  coordinates: { lat: number; lng: number };
+  image: string;
+}
+
 export interface BookingDetails {
   bookingId: string;
   listingId: string;
   listingTitle: string;
   listingLocation: string;
   listingImage: string;
+  bookingType?: 'stay' | 'expedition' | 'flight';
   checkInDate: string;
   checkOutDate: string;
   nights: number;
@@ -141,3 +157,4 @@ export interface BookingDetails {
   status: 'Confirmed' | 'Pending';
   createdAt: string;
 }
+

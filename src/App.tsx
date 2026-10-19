@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Currency, StayListing, ExpeditionListing, FlightOffer, BookingDetails, CategoryTheme } from './types/travel';
 import { MOCK_STAYS, MOCK_EXPEDITIONS, POPULAR_DESTINATIONS, CURRENCY_RATES } from './data/mockData';
 import { Header } from './components/Header';
@@ -12,16 +12,64 @@ import { FlightSearchSection } from './components/FlightSearchSection';
 import { WishlistDrawer } from './components/WishlistDrawer';
 import { EditorialSection } from './components/EditorialSection';
 import { Footer } from './components/Footer';
-import { Sparkles, SlidersHorizontal, ArrowUpDown, X, CheckCircle, Compass } from 'lucide-react';
+import { MyBookingsModal } from './components/MyBookingsModal';
+import { DestinationExplorerModal } from './components/DestinationExplorerModal';
+import { ApiKeyModal } from './components/ApiKeyModal';
+import { CompareStaysModal } from './components/CompareStaysModal';
+import {
+  Sparkles,
+  SlidersHorizontal,
+  ArrowUpDown,
+  X,
+  CheckCircle,
+  Compass,
+  Search,
+  Scale,
+  DollarSign,
+} from 'lucide-react';
+
+const SAVED_STAYS_STORAGE_KEY = 'auravoyage_saved_stays';
+const BOOKINGS_STORAGE_KEY = 'auravoyage_bookings';
 
 export default function App() {
   const [currency, setCurrency] = useState<Currency>('USD');
-  const [savedStayIds, setSavedStayIds] = useState<string[]>(['stay-kyoto-ryokan', 'stay-amalfi-cliff-villa']);
+
+  // Wishlist with localStorage initialization
+  const [savedStayIds, setSavedStayIds] = useState<string[]>(() => {
+    try {
+      const stored = localStorage.getItem(SAVED_STAYS_STORAGE_KEY);
+      return stored ? JSON.parse(stored) : ['stay-kyoto-ryokan', 'stay-amalfi-cliff-villa'];
+    } catch {
+      return ['stay-kyoto-ryokan', 'stay-amalfi-cliff-villa'];
+    }
+  });
+
+  // Confirmed bookings with localStorage initialization
+  const [confirmedBookings, setConfirmedBookings] = useState<BookingDetails[]>(() => {
+    try {
+      const stored = localStorage.getItem(BOOKINGS_STORAGE_KEY);
+      return stored ? JSON.parse(stored) : [];
+    } catch {
+      return [];
+    }
+  });
+
+  // Stays comparison selection
+  const [comparedStayIds, setComparedStayIds] = useState<string[]>([]);
+  const [isCompareModalOpen, setIsCompareModalOpen] = useState(false);
+
+  // Modals state
   const [isWishlistOpen, setIsWishlistOpen] = useState(false);
+  const [isBookingsModalOpen, setIsBookingsModalOpen] = useState(false);
+  const [isAtlasModalOpen, setIsAtlasModalOpen] = useState(false);
+  const [isApiKeyModalOpen, setIsApiKeyModalOpen] = useState(false);
 
   // Active Category & Filter State
   const [selectedCategory, setSelectedCategory] = useState<CategoryTheme>('all');
   const [sortBy, setSortBy] = useState<'featured' | 'price-asc' | 'price-desc' | 'rating'>('featured');
+  const [searchKeyword, setSearchKeyword] = useState('');
+  const [priceFilterMax, setPriceFilterMax] = useState<number>(2000);
+
   const [activeSearchFilter, setActiveSearchFilter] = useState<{
     destination?: string;
     guests?: number;
@@ -29,12 +77,13 @@ export default function App() {
     checkOut?: string;
   } | null>(null);
 
-  // Modal States
+  // Active listing detail modal
   const [activeModalItem, setActiveModalItem] = useState<{
     item: StayListing | ExpeditionListing;
     type: 'stay' | 'expedition';
   } | null>(null);
 
+  // Active booking checkout modal
   const [activeBookingPayload, setActiveBookingPayload] = useState<{
     item: any;
     checkIn: string;
@@ -61,6 +110,24 @@ export default function App() {
     style: 'Heritage & Zen Living',
   });
 
+  // Sync saved stays to localStorage
+  useEffect(() => {
+    try {
+      localStorage.setItem(SAVED_STAYS_STORAGE_KEY, JSON.stringify(savedStayIds));
+    } catch (e) {
+      // Ignore in restricted environments
+    }
+  }, [savedStayIds]);
+
+  // Sync bookings to localStorage
+  useEffect(() => {
+    try {
+      localStorage.setItem(BOOKINGS_STORAGE_KEY, JSON.stringify(confirmedBookings));
+    } catch (e) {
+      // Ignore in restricted environments
+    }
+  }, [confirmedBookings]);
+
   const showToast = (msg: string) => {
     setToastMessage(msg);
     setTimeout(() => {
@@ -86,6 +153,21 @@ export default function App() {
     setSavedStayIds((prev) => prev.filter((id) => id !== stayId));
   };
 
+  // Toggle Stay in Comparison
+  const handleToggleCompareStay = (stay: StayListing) => {
+    setComparedStayIds((prev) => {
+      if (prev.includes(stay.id)) {
+        return prev.filter((id) => id !== stay.id);
+      }
+      if (prev.length >= 3) {
+        showToast('You can compare a maximum of 3 sanctuaries simultaneously.');
+        return prev;
+      }
+      showToast(`Added "${stay.title}" to comparison pool.`);
+      return [...prev, stay.id];
+    });
+  };
+
   // Navigation smoothly to anchor
   const handleNavigate = (sectionId: string) => {
     const el = document.getElementById(sectionId);
@@ -94,10 +176,35 @@ export default function App() {
     }
   };
 
+  // Handle booking confirmed
+  const handleBookingSuccess = (newBooking: BookingDetails) => {
+    setConfirmedBookings((prev) => [newBooking, ...prev]);
+    showToast(`Reservation #${newBooking.bookingId} confirmed! Check your reservations pass.`);
+  };
+
+  // Handle booking cancellation
+  const handleCancelBooking = (bookingId: string) => {
+    setConfirmedBookings((prev) => prev.filter((b) => b.bookingId !== bookingId));
+    showToast(`Reservation #${bookingId} has been successfully cancelled.`);
+  };
+
   // Stays filter logic
   const filteredStays = MOCK_STAYS.filter((stay) => {
     if (selectedCategory !== 'all' && stay.category !== selectedCategory) {
       return false;
+    }
+    if (stay.pricePerNight > priceFilterMax) {
+      return false;
+    }
+    if (searchKeyword.trim()) {
+      const term = searchKeyword.toLowerCase();
+      const matchesKeyword =
+        stay.title.toLowerCase().includes(term) ||
+        stay.destination.toLowerCase().includes(term) ||
+        stay.country.toLowerCase().includes(term) ||
+        stay.subtitle.toLowerCase().includes(term) ||
+        stay.amenities.some((a) => a.toLowerCase().includes(term));
+      if (!matchesKeyword) return false;
     }
     if (activeSearchFilter?.destination) {
       const q = activeSearchFilter.destination.toLowerCase();
@@ -127,6 +234,7 @@ export default function App() {
   });
 
   const savedStaysList = MOCK_STAYS.filter((s) => savedStayIds.includes(s.id));
+  const comparedStaysList = MOCK_STAYS.filter((s) => comparedStayIds.includes(s.id));
 
   return (
     <div className="min-h-screen bg-[#faf9f6] text-stone-900 flex flex-col font-sans selection:bg-amber-100 selection:text-amber-900">
@@ -143,7 +251,11 @@ export default function App() {
         currentCurrency={currency}
         onCurrencyChange={setCurrency}
         savedCount={savedStayIds.length}
+        bookingCount={confirmedBookings.length}
         onOpenWishlist={() => setIsWishlistOpen(true)}
+        onOpenBookings={() => setIsBookingsModalOpen(true)}
+        onOpenAtlas={() => setIsAtlasModalOpen(true)}
+        onOpenApiKeyModal={() => setIsApiKeyModalOpen(true)}
         onNavigate={handleNavigate}
         onOpenPlanner={() => handleNavigate('architect')}
       />
@@ -172,7 +284,7 @@ export default function App() {
         />
 
         {/* Categories Bar / Segmented Controls */}
-        <section id="stays" className="py-8 px-6 max-w-6xl mx-auto border-t border-stone-200">
+        <section id="stays" className="py-10 px-4 sm:px-6 max-w-6xl mx-auto border-t border-stone-200">
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-6">
             <div>
               <div className="text-xs font-semibold uppercase tracking-wider text-amber-900 mb-1">
@@ -202,8 +314,8 @@ export default function App() {
             </div>
           </div>
 
-          {/* Interactive Category Tabs (Conforming to 1.A interactive buttons) */}
-          <div className="flex items-center gap-1.5 overflow-x-auto pb-2 mb-6">
+          {/* Interactive Category Tabs */}
+          <div className="flex items-center gap-1.5 overflow-x-auto pb-2 mb-4">
             {[
               { id: 'all', label: 'All Highlights' },
               { id: 'cultural', label: 'Cultural & Historic' },
@@ -224,6 +336,56 @@ export default function App() {
                 {cat.label}
               </button>
             ))}
+          </div>
+
+          {/* Search & Filter Bar */}
+          <div className="p-3 bg-white border border-stone-200 rounded-xl mb-6 flex flex-col md:flex-row gap-3 items-center justify-between">
+            <div className="relative w-full md:w-80">
+              <Search className="w-3.5 h-3.5 text-stone-400 absolute left-3 top-3" />
+              <input
+                type="text"
+                placeholder="Search villas, pools, onsen, saunas..."
+                value={searchKeyword}
+                onChange={(e) => setSearchKeyword(e.target.value)}
+                className="w-full pl-9 pr-3 py-2 bg-stone-50 border border-stone-200 rounded-lg text-xs text-stone-900 focus:outline-none focus:border-stone-400"
+              />
+              {searchKeyword && (
+                <button
+                  onClick={() => setSearchKeyword('')}
+                  className="absolute right-2.5 top-2.5 text-stone-400 hover:text-stone-700"
+                >
+                  <X className="w-3.5 h-3.5" />
+                </button>
+              )}
+            </div>
+
+            <div className="flex items-center gap-4 w-full md:w-auto justify-between md:justify-end text-xs text-stone-600">
+              <div className="flex items-center gap-2">
+                <span className="font-medium text-stone-500 whitespace-nowrap">Max nightly:</span>
+                <span className="font-mono font-bold text-stone-900">
+                  ${priceFilterMax}
+                </span>
+                <input
+                  type="range"
+                  min="400"
+                  max="2000"
+                  step="50"
+                  value={priceFilterMax}
+                  onChange={(e) => setPriceFilterMax(Number(e.target.value))}
+                  className="w-24 sm:w-32 accent-amber-900 cursor-pointer"
+                />
+              </div>
+
+              {comparedStayIds.length > 0 && (
+                <button
+                  onClick={() => setIsCompareModalOpen(true)}
+                  className="px-3 py-1.5 bg-amber-400 hover:bg-amber-300 text-stone-950 font-bold text-xs rounded-lg transition-colors cursor-pointer flex items-center gap-1.5 shadow-xs shrink-0"
+                >
+                  <Scale className="w-3.5 h-3.5" />
+                  <span>Compare ({comparedStayIds.length})</span>
+                </button>
+              )}
+            </div>
           </div>
 
           {/* Active Search Filter Badge */}
@@ -251,14 +413,16 @@ export default function App() {
               <Compass className="w-8 h-8 text-stone-400 mx-auto" />
               <div className="font-serif text-lg text-stone-800">No properties matched this exact filter</div>
               <p className="text-xs text-stone-500 max-w-sm mx-auto">
-                Try expanding your guest count or explore other iconic regions like Kyoto or Positano.
+                Try expanding your guest count, adjusting the price slider, or explore other iconic regions like Kyoto or Positano.
               </p>
               <button
                 onClick={() => {
                   setSelectedCategory('all');
                   setActiveSearchFilter(null);
+                  setSearchKeyword('');
+                  setPriceFilterMax(2000);
                 }}
-                className="px-4 py-2 text-xs font-semibold text-white bg-stone-900 rounded-md"
+                className="px-4 py-2 text-xs font-semibold text-white bg-stone-900 rounded-md cursor-pointer"
               >
                 Reset All Filters
               </button>
@@ -271,7 +435,9 @@ export default function App() {
                   stay={stay}
                   currency={currency}
                   isSaved={savedStayIds.includes(stay.id)}
+                  isCompared={comparedStayIds.includes(stay.id)}
                   onToggleSave={handleToggleSaveStay}
+                  onToggleCompare={handleToggleCompareStay}
                   onSelect={(selected) => setActiveModalItem({ item: selected, type: 'stay' })}
                 />
               ))}
@@ -347,6 +513,7 @@ export default function App() {
             setActiveSearchFilter({ destination: dest });
             handleNavigate('stays');
           }}
+          onOpenApiKeyModal={() => setIsApiKeyModalOpen(true)}
         />
 
         {/* Editorial Journal & Craftsmanship Stories */}
@@ -382,9 +549,7 @@ export default function App() {
           bookingData={activeBookingPayload}
           currency={currency}
           onClose={() => setActiveBookingPayload(null)}
-          onBookingSuccess={(booking) => {
-            showToast(`Reservation #${booking.bookingId} confirmed! Check your inbox.`);
-          }}
+          onBookingSuccess={handleBookingSuccess}
         />
       )}
 
@@ -408,6 +573,79 @@ export default function App() {
           }
         }}
       />
+
+      {/* My Bookings / Reservations Modal */}
+      <MyBookingsModal
+        isOpen={isBookingsModalOpen}
+        bookings={confirmedBookings}
+        currency={currency}
+        onClose={() => setIsBookingsModalOpen(false)}
+        onCancelBooking={handleCancelBooking}
+        onExploreMore={() => handleNavigate('stays')}
+      />
+
+      {/* Destination Atlas Explorer Modal */}
+      <DestinationExplorerModal
+        isOpen={isAtlasModalOpen}
+        currency={currency}
+        onClose={() => setIsAtlasModalOpen(false)}
+        onSelectDestination={(dest) => {
+          setActiveSearchFilter({ destination: dest });
+          handleNavigate('stays');
+        }}
+        onPlanDestination={(dest) => {
+          setArchitectParams({ destination: dest, days: 5, style: 'Heritage & Zen Living' });
+          handleNavigate('architect');
+        }}
+      />
+
+      {/* Gemini AI Key Settings Modal */}
+      <ApiKeyModal
+        isOpen={isApiKeyModalOpen}
+        onClose={() => setIsApiKeyModalOpen(false)}
+        onKeyUpdated={() => {
+          showToast('Gemini AI engine configuration updated!');
+        }}
+      />
+
+      {/* Compare Stays Modal */}
+      <CompareStaysModal
+        isOpen={isCompareModalOpen}
+        stays={comparedStaysList}
+        currency={currency}
+        onClose={() => setIsCompareModalOpen(false)}
+        onRemoveStay={(id) => setComparedStayIds((prev) => prev.filter((sId) => sId !== id))}
+        onSelectStay={(stay) => {
+          setActiveModalItem({ item: stay, type: 'stay' });
+          setIsCompareModalOpen(false);
+        }}
+      />
+
+      {/* Floating Comparison Bar if items selected */}
+      {comparedStayIds.length > 0 && !isCompareModalOpen && (
+        <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-40 bg-stone-900/95 text-white backdrop-blur-md px-5 py-3 rounded-full shadow-2xl border border-stone-700 flex items-center gap-4 animate-in slide-in-from-bottom-5">
+          <div className="flex items-center gap-2 text-xs">
+            <Scale className="w-4 h-4 text-amber-400" />
+            <span>
+              <strong className="text-amber-400 font-semibold">{comparedStayIds.length}</strong> of 3 Sanctuaries selected
+            </span>
+          </div>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={() => setIsCompareModalOpen(true)}
+              className="px-3.5 py-1.5 bg-amber-400 hover:bg-amber-300 text-stone-950 font-bold text-xs rounded-full transition-colors cursor-pointer shadow-xs"
+            >
+              Compare Now
+            </button>
+            <button
+              onClick={() => setComparedStayIds([])}
+              className="p-1 text-stone-400 hover:text-white transition-colors cursor-pointer"
+            >
+              <X className="w-4 h-4" />
+            </button>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
